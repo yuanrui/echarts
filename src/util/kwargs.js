@@ -1,6 +1,6 @@
-define(function (){
-    function kwargs(func, defaults) {
-        /*jshint maxlen : 200*/
+define(function(require){
+    function kwargs(defaults) {
+        var func = this;
         var removeComments = new RegExp('(\\/\\*[\\w\\\'\\,\\(\\)\\s\\r\\n\\*]*\\*\\/)|(\\/\\/[\\w\\s\\\'][^\\n\\r]*$)|(<![\\-\\-\\s\\w\\>\\/]*>)', 'gim');
         var removeWhitespc = new RegExp('\\s+', 'gim');
         var matchSignature = new RegExp('function.*?\\((.*?)\\)', 'i');
@@ -16,25 +16,23 @@ define(function (){
             defaults = {};
         }
 
-        return function () {
+        return function() {
             var args = Array.prototype.slice.call(arguments);
             var kwargs = args[args.length - 1];
 
             // Check the existance of the kwargs
             if (kwargs && kwargs.constructor === Object) {
                 args.pop();
-            }
-            else{
+            }else{
                 kwargs = {};
             }
 
             // Fill the arguments and apply them
             for (var i = 0; i < names.length; i++) {
-                var name = names[i];
+                name = names[i];
                 if (name in kwargs) {
                     args[i] = kwargs[name];
-                }
-                else if(name in defaults && args[i] == null){
+                }else if(name in defaults && args[i] === undefined){
                     args[i] = defaults[name];
                 }
             }
@@ -43,6 +41,5 @@ define(function (){
         };
     }
     // As function prototype
-    // Function.prototype.kwargs = kwargs;
-    return kwargs;
+    Function.prototype.kwargs = kwargs;
 });

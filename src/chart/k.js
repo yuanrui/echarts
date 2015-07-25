@@ -2,65 +2,10 @@
  * echarts图表类：K线图
  *
  * @desc echarts基于Canvas，纯Javascript图表库，提供直观，生动，可交互，可个性化定制的数据统计图表。
- * @author Kener (@Kener-林峰, kener.linfeng@gmail.com)
+ * @author Kener (@Kener-林峰, linzhifeng@baidu.com)
  *
  */
-define(function (require) {
-    var ChartBase = require('./base');
-    
-    // 图形依赖
-    var CandleShape = require('../util/shape/Candle');
-    // 组件依赖
-    require('../component/axis');
-    require('../component/grid');
-    require('../component/dataZoom');
-    
-    var ecConfig = require('../config');
-    // K线图默认参数
-    ecConfig.k = {
-        zlevel: 0,                  // 一级层叠
-        z: 2,                       // 二级层叠
-        clickable: true,
-        hoverable: true,
-        legendHoverLink: false,
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        // barWidth: null               // 默认自适应
-        // barMaxWidth: null            // 默认自适应 
-        itemStyle: {
-            normal: {
-                color: '#fff',          // 阳线填充颜色
-                color0: '#00aa11',      // 阴线填充颜色
-                lineStyle: {
-                    width: 1,
-                    color: '#ff3200',   // 阳线边框颜色
-                    color0: '#00aa11'   // 阴线边框颜色
-                },
-                label: {
-                    show: false
-                    // formatter: 标签文本格式器，同Tooltip.formatter，不支持异步回调
-                    // position: 默认自适应，水平布局为'top'，垂直布局为'right'，可选为
-                    //           'inside'|'left'|'right'|'top'|'bottom'
-                    // textStyle: null      // 默认使用全局文本样式，详见TEXTSTYLE
-                }
-            },
-            emphasis: {
-                // color: 各异,
-                // color0: 各异,
-                label: {
-                    show: false
-                    // formatter: 标签文本格式器，同Tooltip.formatter，不支持异步回调
-                    // position: 默认自适应，水平布局为'top'，垂直布局为'right'，可选为
-                    //           'inside'|'left'|'right'|'top'|'bottom'
-                    // textStyle: null      // 默认使用全局文本样式，详见TEXTSTYLE
-                }
-            }
-        }
-    };
-
-    var ecData = require('../util/ecData');
-    var zrUtil = require('zrender/tool/util');
-    
+define(function(require) {
     /**
      * 构造函数
      * @param {Object} messageCenter echart消息中心
@@ -68,34 +13,38 @@ define(function (require) {
      * @param {Object} series 数据
      * @param {Object} component 组件
      */
-    function K(ecTheme, messageCenter, zr, option, myChart) {
-        // 图表基类
-        ChartBase.call(this, ecTheme, messageCenter, zr, option, myChart);
+    function K(messageCenter, zr, option, component){
+        // 基类装饰
+        var ComponentBase = require('../component/base');
+        ComponentBase.call(this, zr);
+        // 可计算特性装饰
+        var CalculableBase = require('./calculableBase');
+        CalculableBase.call(this, zr, option);
 
-        this.refresh(option);
-    }
-    
-    K.prototype = {
-        type: ecConfig.CHART_TYPE_K,
-        /**
-         * 绘制图形
-         */
-        _buildShape: function () {
-            var series = this.series;
-            this.selectedMap = {};
+        var ecConfig = require('../config');
+        var ecData = require('../util/ecData');
+
+        var self = this;
+        self.type = ecConfig.CHART_TYPE_K;
+
+        var series;                 // 共享数据源，不要修改跟自己无关的项
+
+        var _zlevelBase = self.getZlevelBase();
+
+        function _buildShape() {
+            self.selectedMap = {};
 
             // 水平垂直双向series索引 ，position索引到seriesIndex
             var _position2sIndexMap = {
-                top: [],
-                bottom: []
+                top : [],
+                bottom : []
             };
             var xAxis;
             for (var i = 0, l = series.length; i < l; i++) {
-                if (series[i].type === ecConfig.CHART_TYPE_K) {
-                    series[i] = this.reformOption(series[i]);
-                    this.legendHoverLink = series[i].legendHoverLink || this.legendHoverLink;
-                    xAxis = this.component.xAxis.getAxis(series[i].xAxisIndex);
-                    if (xAxis.type === ecConfig.COMPONENT_TYPE_AXIS_CATEGORY
+                if (series[i].type == ecConfig.CHART_TYPE_K) {
+                    series[i] = self.reformOption(series[i]);
+                    xAxis = component.xAxis.getAxis(series[i].xAxisIndex);
+                    if (xAxis.type == ecConfig.COMPONENT_TYPE_AXIS_CATEGORY
                     ) {
                         _position2sIndexMap[xAxis.getPosition()].push(i);
                     }
@@ -104,71 +53,70 @@ define(function (require) {
             //console.log(_position2sIndexMap)
             for (var position in _position2sIndexMap) {
                 if (_position2sIndexMap[position].length > 0) {
-                    this._buildSinglePosition(
+                    _buildSinglePosition(
                         position, _position2sIndexMap[position]
                     );
                 }
             }
 
-            this.addShapeList();
-        },
+            for (var i = 0, l = self.shapeList.length; i < l; i++) {
+                self.shapeList[i].id = zr.newShapeId(self.type);
+                zr.addShape(self.shapeList[i]);
+            }
+        }
 
         /**
          * 构建单个方向上的K线图
          *
          * @param {number} seriesIndex 系列索引
          */
-        _buildSinglePosition: function (position, seriesArray) {
-            var mapData = this._mapData(seriesArray);
+        function _buildSinglePosition(position, seriesArray) {
+            var mapData = _mapData(seriesArray);
             var locationMap = mapData.locationMap;
             var maxDataLength = mapData.maxDataLength;
 
             if (maxDataLength === 0 || locationMap.length === 0) {
                 return;
             }
-            this._buildHorizontal(seriesArray, maxDataLength, locationMap);
-
-            for (var i = 0, l = seriesArray.length; i < l; i++) {
-                this.buildMark(seriesArray[i]);
-            }
-        },
+            _buildHorizontal(maxDataLength, locationMap);
+        }
 
         /**
          * 数据整形
          * 数组位置映射到系列索引
          */
-        _mapData: function (seriesArray) {
-            var series = this.series;
+        function _mapData(seriesArray) {
             var serie;                              // 临时映射变量
             var serieName;                          // 临时映射变量
-            var legend = this.component.legend;
+            var legend = component.legend;
             var locationMap = [];                   // 需要返回的东西：数组位置映射到系列索引
             var maxDataLength = 0;                  // 需要返回的东西：最大数据长度
             // 计算需要显示的个数和分配位置并记在下面这个结构里
             for (var i = 0, l = seriesArray.length; i < l; i++) {
                 serie = series[seriesArray[i]];
                 serieName = serie.name;
-                this.selectedMap[serieName] = legend 
-                                              ? legend.isSelected(serieName)
-                                              : true;
-                
-                if (this.selectedMap[serieName]) {
+                if (legend){
+                    self.selectedMap[serieName] = legend.isSelected(serieName);
+                } else {
+                    self.selectedMap[serieName] = true;
+                }
+
+                if (self.selectedMap[serieName]) {
                     locationMap.push(seriesArray[i]);
                 }
                 // 兼职帮算一下最大长度
                 maxDataLength = Math.max(maxDataLength, serie.data.length);
             }
             return {
-                locationMap: locationMap,
-                maxDataLength: maxDataLength
+                locationMap : locationMap,
+                maxDataLength : maxDataLength
             };
-        },
+        }
 
         /**
          * 构建类目轴为水平方向的K线图系列
          */
-        _buildHorizontal: function (seriesArray, maxDataLength, locationMap) {
-            var series = this.series;
+        function _buildHorizontal(maxDataLength, locationMap) {
             // 确定类目轴和数值轴，同一方向随便找一个即可
             var seriesIndex;
             var serie;
@@ -187,7 +135,7 @@ define(function (require) {
                 serie = series[seriesIndex];
                 
                 xAxisIndex = serie.xAxisIndex || 0;
-                categoryAxis = this.component.xAxis.getAxis(xAxisIndex);
+                categoryAxis = component.xAxis.getAxis(xAxisIndex);
                 candleWidth = serie.barWidth 
                               || Math.floor(categoryAxis.getGap() / 2);
                 barMaxWidth = serie.barMaxWidth;
@@ -195,18 +143,24 @@ define(function (require) {
                     candleWidth = barMaxWidth;
                 }
                 yAxisIndex = serie.yAxisIndex || 0;
-                valueAxis = this.component.yAxis.getAxis(yAxisIndex);
+                valueAxis = component.yAxis.getAxis(yAxisIndex);
                 
                 pointList[seriesIndex] = [];
                 for (var i = 0, l = maxDataLength; i < l; i++) {
-                    if (categoryAxis.getNameByIndex(i) == null) {
+                    if (typeof categoryAxis.getNameByIndex(i) 
+                        == 'undefined'
+                    ) {
                         // 系列数据超出类目轴长度
                         break;
                     }
                     
                     data = serie.data[i];
-                    value = this.getDataFromOption(data, '-');
-                    if (value === '-' || value.length != 4) {
+                    value = typeof data != 'undefined'
+                            ? (typeof data.value != 'undefined'
+                              ? data.value
+                              : data)
+                            : '-';
+                    if (value == '-' || value.length != 4) {
                         // 数据格式不符
                         continue;
                     }
@@ -223,14 +177,13 @@ define(function (require) {
                 }
             }
             // console.log(pointList)
-            this._buildKLine(seriesArray, pointList);
-        },
+            _buildKLine(pointList);
+        }
 
         /**
          * 生成K线
          */
-        _buildKLine: function (seriesArray, pointList) {
-            var series = this.series;
+        function _buildKLine(pointList) {
             // normal:
             var nLineWidth;
             var nLineColor;
@@ -252,48 +205,46 @@ define(function (require) {
             var singlePoint;
             var candleType;
 
-            var seriesIndex;
-            for (var sIdx = 0, len = seriesArray.length; sIdx < len; sIdx++) {
-                seriesIndex = seriesArray[sIdx];
+            for (var seriesIndex = 0, len = series.length;
+                seriesIndex < len;
+                seriesIndex++
+            ) {
                 serie = series[seriesIndex];
                 seriesPL = pointList[seriesIndex];
-                
-                if (this._isLarge(seriesPL)) {
-                    seriesPL = this._getLargePointList(seriesPL);
-                }
-                
-                if (serie.type === ecConfig.CHART_TYPE_K && seriesPL != null) {
+                if (serie.type == ecConfig.CHART_TYPE_K
+                    && typeof seriesPL != 'undefined'
+                ) {
                     // 多级控制
-                    queryTarget = serie;
-                    nLineWidth = this.query(
+                    queryTarget = [serie];
+                    nLineWidth = self.deepQuery(
                         queryTarget, 'itemStyle.normal.lineStyle.width'
                     );
-                    nLineColor = this.query(
+                    nLineColor = self.deepQuery(
                         queryTarget, 'itemStyle.normal.lineStyle.color'
                     );
-                    nLineColor0 = this.query(
+                    nLineColor0 = self.deepQuery(
                         queryTarget, 'itemStyle.normal.lineStyle.color0'
                     );
-                    nColor = this.query(
+                    nColor = self.deepQuery(
                         queryTarget, 'itemStyle.normal.color'
                     );
-                    nColor0 = this.query(
+                    nColor0 = self.deepQuery(
                         queryTarget, 'itemStyle.normal.color0'
                     );
                     
-                    eLineWidth = this.query(
+                    eLineWidth = self.deepQuery(
                         queryTarget, 'itemStyle.emphasis.lineStyle.width'
                     );
-                    eLineColor = this.query(
+                    eLineColor = self.deepQuery(
                         queryTarget, 'itemStyle.emphasis.lineStyle.color'
                     );
-                    eLineColor0 = this.query(
+                    eLineColor0 = self.deepQuery(
                         queryTarget, 'itemStyle.emphasis.lineStyle.color0'
                     );
-                    eColor = this.query(
+                    eColor = self.deepQuery(
                         queryTarget, 'itemStyle.emphasis.color'
                     );
-                    eColor0 = this.query(
+                    eColor0 = self.deepQuery(
                         queryTarget, 'itemStyle.emphasis.color0'
                     );
 
@@ -312,9 +263,9 @@ define(function (require) {
                     for (var i = 0, l = seriesPL.length; i < l; i++) {
                         singlePoint = seriesPL[i];
                         data = serie.data[singlePoint[6]];
-                        queryTarget = data;
-                        candleType = singlePoint[3] < singlePoint[2];
-                        this.shapeList.push(this._getCandle(
+                        queryTarget = [data];
+                        candleType = singlePoint[3] > singlePoint[2];
+                        self.shapeList.push(_getCandle(
                             seriesIndex,    // seriesIndex
                             singlePoint[6], // dataIndex
                             singlePoint[7], // name
@@ -328,25 +279,25 @@ define(function (require) {
                             
                             // 填充颜色
                             candleType
-                            ? (this.query(          // 阳
+                            ? (self.deepQuery(          // 阳
                                    queryTarget, 'itemStyle.normal.color'
                                ) || nColor)
-                            : (this.query(          // 阴
+                            : (self.deepQuery(          // 阴
                                    queryTarget, 'itemStyle.normal.color0'
                                ) || nColor0),
                             
                             // 线宽
-                            this.query(
+                            self.deepQuery(
                                queryTarget, 'itemStyle.normal.lineStyle.width'
                             ) || nLineWidth,
                             
                             // 线色
                             candleType
-                            ? (this.query(          // 阳
+                            ? (self.deepQuery(          // 阳
                                    queryTarget,
                                    'itemStyle.normal.lineStyle.color'
                                ) || nLineColor)
-                            : (this.query(          // 阴
+                            : (self.deepQuery(          // 阴
                                    queryTarget,
                                    'itemStyle.normal.lineStyle.color0'
                                ) || nLineColor0),
@@ -355,25 +306,25 @@ define(function (require) {
                             
                             // 填充颜色
                             candleType
-                            ? (this.query(          // 阳
+                            ? (self.deepQuery(          // 阳
                                    queryTarget, 'itemStyle.emphasis.color'
                                ) || eColor || nColor)
-                            : (this.query(          // 阴
+                            : (self.deepQuery(          // 阴
                                    queryTarget, 'itemStyle.emphasis.color0'
                                ) || eColor0 || nColor0),
                             
                             // 线宽
-                            this.query(
+                            self.deepQuery(
                                queryTarget, 'itemStyle.emphasis.lineStyle.width'
                             ) || eLineWidth || nLineWidth,
                             
                             // 线色
                             candleType
-                            ? (this.query(          // 阳
+                            ? (self.deepQuery(          // 阳
                                    queryTarget,
                                    'itemStyle.emphasis.lineStyle.color'
                                ) || eLineColor || nLineColor)
-                            : (this.query(          // 阴
+                            : (self.deepQuery(          // 阴
                                    queryTarget,
                                    'itemStyle.emphasis.lineStyle.color0'
                                ) || eLineColor0 || nLineColor0)
@@ -381,111 +332,74 @@ define(function (require) {
                     }
                 }
             }
-            // console.log(this.shapeList)
-        },
+            // console.log(self.shapeList)
+        }
 
-        _isLarge: function(singlePL) {
-            return singlePL[0][1] < 0.5;
-        },
-        
-        /**
-         * 大规模pointList优化 
-         */
-        _getLargePointList: function(singlePL) {
-            var total = this.component.grid.getWidth();
-            var len = singlePL.length;
-            var newList = [];
-            for (var i = 0; i < total; i++) {
-                newList[i] = singlePL[Math.floor(len / total * i)];
-            }
-            return newList;
-        },
-        
         /**
          * 生成K线图上的图形
          */
-        _getCandle: function (
+        function _getCandle(
             seriesIndex, dataIndex, name, 
             x, width, y0, y1, y2, y3, 
             nColor, nLinewidth, nLineColor, 
             eColor, eLinewidth, eLineColor
         ) {
-            var series = this.series;
-            var serie = series[seriesIndex];
-            var data = serie.data[dataIndex];
-            var queryTarget = [data, serie];
-
             var itemShape = {
-                zlevel: serie.zlevel,
-                z: serie.z,
-                clickable: this.deepQuery(queryTarget, 'clickable'),
-                hoverable: this.deepQuery(queryTarget, 'hoverable'),
-                style: {
-                    x: x,
-                    y: [y0, y1, y2, y3],
-                    width: width,
-                    color: nColor,
-                    strokeColor: nLineColor,
-                    lineWidth: nLinewidth,
-                    brushType: 'both'
+                shape : 'candle',
+                zlevel : _zlevelBase,
+                clickable: true,
+                style : {
+                    x : x,
+                    y : [y0, y1, y2, y3],
+                    width : width,
+                    color : nColor,
+                    strokeColor : nLineColor,
+                    lineWidth : nLinewidth,
+                    brushType : 'both'
                 },
-                highlightStyle: {
-                    color: eColor,
-                    strokeColor: eLineColor,
-                    lineWidth: eLinewidth
+                highlightStyle : {
+                    color : eColor,
+                    strokeColor : eLineColor,
+                    lineWidth : eLinewidth
                 },
                 _seriesIndex: seriesIndex
             };
-
-            itemShape = this.addLabel(itemShape, serie, data, name);
-            
             ecData.pack(
                 itemShape,
-                serie, seriesIndex,
-                data, dataIndex,
+                series[seriesIndex], seriesIndex,
+                series[seriesIndex].data[dataIndex], dataIndex,
                 name
             );
-            
-            itemShape = new CandleShape(itemShape);
-            
-            return itemShape;
-        },
 
-        // 位置转换
-        getMarkCoord: function (seriesIndex, mpData) {
-            var serie = this.series[seriesIndex];
-            var xAxis = this.component.xAxis.getAxis(serie.xAxisIndex);
-            var yAxis = this.component.yAxis.getAxis(serie.yAxisIndex);
-            
-            return [
-                typeof mpData.xAxis != 'string' && xAxis.getCoordByIndex
-                    ? xAxis.getCoordByIndex(mpData.xAxis || 0)
-                    : xAxis.getCoord(mpData.xAxis || 0),
-                
-                typeof mpData.yAxis != 'string' && yAxis.getCoordByIndex
-                    ? yAxis.getCoordByIndex(mpData.yAxis || 0)
-                    : yAxis.getCoord(mpData.yAxis || 0)
-            ];
-        },
-        
+            return itemShape;
+        }
+
+        /**
+         * 构造函数默认执行的初始化方法，也用于创建实例后动态修改
+         * @param {Object} newSeries
+         * @param {Object} newComponent
+         */
+        function init(newOption, newComponent) {
+            component = newComponent;
+            refresh(newOption);
+        }
+
         /**
          * 刷新
          */
-        refresh: function (newOption) {
+        function refresh(newOption) {
             if (newOption) {
-                this.option = newOption;
-                this.series = newOption.series;
+                option = newOption;
+                series = option.series;
             }
-            
-            this.backupShapeList();
-            this._buildShape();
-        },
+            self.clear();
+            _buildShape();
+        }
 
         /**
          * 动画设定
          */
-        addDataAnimation: function (params, done) {
-            var series = this.series;
+        function addDataAnimation(params) {
             var aniMap = {}; // seriesIndex索引参数
             for (var i = 0, l = params.length; i < l; i++) {
                 aniMap[params[i][0]] = params[i];
@@ -496,60 +410,85 @@ define(function (require) {
             var serie;
             var seriesIndex;
             var dataIndex;
-
-            var aniCount = 0;
-            function animationDone() {
-                aniCount--;
-                if (aniCount === 0) {
-                    done && done();
-                }
-            }
-
-             for (var i = 0, l = this.shapeList.length; i < l; i++) {
-                seriesIndex = this.shapeList[i]._seriesIndex;
+             for (var i = 0, l = self.shapeList.length; i < l; i++) {
+                seriesIndex = self.shapeList[i]._seriesIndex;
                 if (aniMap[seriesIndex] && !aniMap[seriesIndex][3]) {
                     // 有数据删除才有移动的动画
-                    if (this.shapeList[i].type === 'candle') {
-                        dataIndex = ecData.get(this.shapeList[i], 'dataIndex');
+                    if (self.shapeList[i].shape == 'candle') {
+                        dataIndex = ecData.get(self.shapeList[i], 'dataIndex');
                         serie = series[seriesIndex];
                         if (aniMap[seriesIndex][2] 
-                            && dataIndex === serie.data.length - 1
+                            && dataIndex == serie.data.length - 1
                         ) {
                             // 队头加入删除末尾
-                            this.zr.delShape(this.shapeList[i].id);
+                            zr.delShape(self.shapeList[i].id);
                             continue;
                         }
                         else if (!aniMap[seriesIndex][2] && dataIndex === 0) {
                             // 队尾加入删除头部
-                            this.zr.delShape(this.shapeList[i].id);
+                            zr.delShape(self.shapeList[i].id);
                             continue;
                         }
-                        dx = this.component.xAxis.getAxis(
+                        dx = component.xAxis.getAxis(
                                 serie.xAxisIndex || 0
                              ).getGap();
                         x = aniMap[seriesIndex][2] ? dx : -dx;
                         y = 0;
-                        aniCount++;
-                        this.zr.animate(this.shapeList[i].id, '')
+                        zr.animate(self.shapeList[i].id, '')
                             .when(
-                                this.query(this.option, 'animationDurationUpdate'),
-                                { position: [ x, y ] }
+                                500,
+                                {position : [x, y]}
                             )
-                            .done(animationDone)
                             .start();
                     }
                 }
             }
-            
-            // 没有动画
-            if (!aniCount) {
-                done && done();
+        }
+        
+        /**
+         * 动画设定
+         */
+        function animation() {
+            var duration = self.deepQuery([option], 'animationDuration');
+            var easing = self.deepQuery([option], 'animationEasing');
+            var x;
+            var y;
+            var serie;
+
+            for (var i = 0, l = self.shapeList.length; i < l; i++) {
+                if (self.shapeList[i].shape == 'candle') {
+                    serie = series[self.shapeList[i]._seriesIndex];
+                    x = self.shapeList[i].style.x;
+                    y = self.shapeList[i].style.y[0];
+                    zr.modShape(self.shapeList[i].id, {
+                        scale : [1, 0, x, y]
+                    });
+                    zr.animate(self.shapeList[i].id, '')
+                        .when(
+                            (self.deepQuery([serie],'animationDuration')
+                            || duration),
+
+                            {scale : [1, 1, x, y]},
+
+                            (self.deepQuery([serie], 'animationEasing')
+                            || easing)
+                        )
+                        .start();
+                }
             }
         }
-    };
+
+        self.init = init;
+        self.refresh = refresh;
+        self.addDataAnimation = addDataAnimation;
+        self.animation = animation;
+
+        init(option, component);
+    }
     
-    zrUtil.inherits(K, ChartBase);
-    
+    // 动态扩展zrender shape：candle
+    require('../util/shape/candle');
+
     // 图表注册
     require('../chart').define('k', K);
     

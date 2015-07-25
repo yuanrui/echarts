@@ -2,470 +2,249 @@
  * echarts组件：工具箱
  *
  * @desc echarts基于Canvas，纯Javascript图表库，提供直观，生动，可交互，可个性化定制的数据统计图表。
- * @author Kener (@Kener-林峰, kener.linfeng@gmail.com)
+ * @author Kener (@Kener-林峰, linzhifeng@baidu.com)
  *
  */
 define(function (require) {
-    var Base = require('./base');
-    
-    // 图形依赖
-    var LineShape = require('zrender/shape/Line');
-    var ImageShape = require('zrender/shape/Image');
-    var RectangleShape = require('zrender/shape/Rectangle');
-    var IconShape = require('../util/shape/Icon');
-    
-    var ecConfig = require('../config');
-    ecConfig.toolbox = {
-        zlevel: 0,                  // 一级层叠
-        z: 6,                       // 二级层叠
-        show: false,
-        orient: 'horizontal',      // 布局方式，默认为水平布局，可选为：
-                                   // 'horizontal' ¦ 'vertical'
-        x: 'right',                // 水平安放位置，默认为全图右对齐，可选为：
-                                   // 'center' ¦ 'left' ¦ 'right'
-                                   // ¦ {number}（x坐标，单位px）
-        y: 'top',                  // 垂直安放位置，默认为全图顶端，可选为：
-                                   // 'top' ¦ 'bottom' ¦ 'center'
-                                   // ¦ {number}（y坐标，单位px）
-        color: ['#1e90ff','#22bb22','#4b0082','#d2691e'],
-        disableColor: '#ddd',
-        effectiveColor: 'red',
-        backgroundColor: 'rgba(0,0,0,0)', // 工具箱背景颜色
-        borderColor: '#ccc',       // 工具箱边框颜色
-        borderWidth: 0,            // 工具箱边框线宽，单位px，默认为0（无边框）
-        padding: 5,                // 工具箱内边距，单位px，默认各方向内边距为5，
-                                   // 接受数组分别设定上右下左边距，同css
-        itemGap: 10,               // 各个item之间的间隔，单位px，默认为10，
-                                   // 横向布局时为水平间隔，纵向布局时为纵向间隔
-        itemSize: 16,              // 工具箱图形宽度
-        showTitle: true,
-        // textStyle: {},
-        feature: {
-            mark: {
-                show: false,
-                title: {
-                    mark: '辅助线开关',
-                    markUndo: '删除辅助线',
-                    markClear: '清空辅助线'
-                },
-                lineStyle: {
-                    width: 1,
-                    color: '#1e90ff',
-                    type: 'dashed'
-                }
-            },
-            dataZoom: {
-                show: false,
-                title: {
-                    dataZoom: '区域缩放',
-                    dataZoomReset: '区域缩放后退'
-                }
-            },
-            dataView: {
-                show: false,
-                title: '数据视图',
-                readOnly: false,
-                lang: ['数据视图', '关闭', '刷新']
-            },
-            magicType: {
-                show: false,
-                title: {
-                    line: '折线图切换',
-                    bar: '柱形图切换',
-                    stack: '堆积',
-                    tiled: '平铺',
-                    force: '力导向布局图切换',
-                    chord: '和弦图切换',
-                    pie: '饼图切换',
-                    funnel: '漏斗图切换'
-                },
-                /*
-                option: {
-                    line: {},
-                    bar: {},
-                    stack: {},
-                    tiled: {},
-                    force: {},
-                    chord: {},
-                    pie: {},
-                    funnel: {}
-                },
-                */
-                type: [] // 'line', 'bar', 'stack', 'tiled', 'force', 'chord', 'pie', 'funnel'
-            },
-            restore: {
-                show: false,
-                title: '还原'
-            },
-            saveAsImage: {
-                show: false,
-                title: '保存为图片',
-                type: 'png',
-                lang: ['点击保存'] 
-            }
-        }
-    };
-
-    var zrUtil = require('zrender/tool/util');
-    var zrConfig = require('zrender/config');
-    var zrEvent = require('zrender/tool/event');
-    
-    var _MAGICTYPE_STACK = 'stack';
-    var _MAGICTYPE_TILED = 'tiled';
-        
     /**
      * 构造函数
      * @param {Object} messageCenter echart消息中心
      * @param {ZRender} zr zrender实例
      * @param {HtmlElement} dom 目标对象
-     * @param {ECharts} myChart 当前图表实例
      */
-    function Toolbox(ecTheme, messageCenter, zr, option, myChart) {
-        Base.call(this, ecTheme, messageCenter, zr, option, myChart);
+    function Toolbox(messageCenter, zr, dom) {
+        var Base = require('./base');
+        Base.call(this, zr);
 
-        this.dom = myChart.dom;
+        var ecConfig = require('../config');
+        var zrConfig = require('zrender/config');
+        var zrEvent = require('zrender/tool/event');
+
+        var option;
+        var component;
         
-        this._magicType = {};
-        this._magicMap = {};
-        this._isSilence = false;
-        
-        this._iconList;
-        this._iconShapeMap = {};
-        //this._itemGroupLocation;
-        this._featureTitle = {};             // 文字
-        this._featureIcon = {};              // 图标
-        this._featureColor = {};             // 颜色
-        this._featureOption = {};
-        this._enableColor = 'red';
-        this._disableColor = '#ccc';
-        // this._markStart;
-        // this._marking;
-        // this._markShape;
-        // this._zoomStart;
-        // this._zooming;
-        // this._zoomShape;
-        // this._zoomQueue;
-        // this._dataView;
-        this._markShapeList = [];
         var self = this;
-        self._onMark = function (param) {
-            self.__onMark(param);
-        };
-        self._onMarkUndo = function (param) {
-            self.__onMarkUndo(param);
-        };
-        self._onMarkClear = function (param) {
-            self.__onMarkClear(param);
-        };
-        self._onDataZoom = function (param) {
-            self.__onDataZoom(param);
-        };
-        self._onDataZoomReset = function (param) {
-            self.__onDataZoomReset(param);
-        };
-        self._onDataView = function (param) {
-            self.__onDataView(param);
-        };
-        self._onRestore = function (param) {
-            self.__onRestore(param);
-        };
-        self._onSaveAsImage = function (param) {
-            self.__onSaveAsImage(param);
-        };
-        self._onMagicType = function (param) {
-            self.__onMagicType(param);
-        };
-        self._onCustomHandler = function (param) {
-            self.__onCustomHandler(param);
-        };
-        self._onmousemove = function (param) {
-            return self.__onmousemove(param);
-        };
+        self.type = ecConfig.COMPONENT_TYPE_TOOLBOX;
 
-        self._onmousedown = function (param) {
-            return self.__onmousedown(param);
-        };
+        var _zlevelBase = self.getZlevelBase();
+        var _magicType;
+        var _magicMap;
+        var _iconList;
+        var _iconShapeMap = {};
+        var _itemGroupLocation;
+        var _enableColor = 'red';
+        var _disableColor = '#ccc';
+        var _markColor;
+        var _markStart;
+        var _marking;
+        var _markShape;
         
-        self._onmouseup = function (param) {
-            return self.__onmouseup(param);
-        };
-        
-        self._onclick = function (param) {
-            return self.__onclick(param);
-        };
-    }
+        var _zoomStart;
+        var _zooming;
+        var _zoomShape;
+        var _zoomQueue;
 
-    Toolbox.prototype = {
-        type: ecConfig.COMPONENT_TYPE_TOOLBOX,
-        _buildShape: function () {
-            this._iconList = [];
-            var toolboxOption = this.option.toolbox;
-            this._enableColor = toolboxOption.effectiveColor;
-            this._disableColor = toolboxOption.disableColor;
-            var feature = toolboxOption.feature;
-            var iconName = [];
+        var _dataView;
+
+        function _buildShape() {
+            _iconList = [];
+            var feature = option.toolbox.feature;
             for (var key in feature){
-                if (feature[key].show) {
+                if (feature[key]) {
                     switch (key) {
                         case 'mark' :
-                            iconName.push({ key: key, name: 'mark' });
-                            iconName.push({ key: key, name: 'markUndo' });
-                            iconName.push({ key: key, name: 'markClear' });
+                            _iconList.push('mark');
+                            _iconList.push('markUndo');
+                            _iconList.push('markClear');
                             break;
                         case 'magicType' :
-                            for (var i = 0, l = feature[key].type.length; i < l; i++) {
-                                feature[key].title[feature[key].type[i] + 'Chart']
-                                    = feature[key].title[feature[key].type[i]];
-                                if (feature[key].option) {
-                                    feature[key].option[feature[key].type[i] + 'Chart']
-                                        = feature[key].option[feature[key].type[i]];
-                                }
-                                iconName.push({ key: key, name: feature[key].type[i] + 'Chart' });
+                            for (var i = 0, l = feature[key].length; i < l; i++
+                            ) {
+                                _iconList.push(feature[key][i] + 'Chart');
                             }
                             break;
                         case 'dataZoom' :
-                            iconName.push({ key: key, name: 'dataZoom' });
-                            iconName.push({ key: key, name: 'dataZoomReset' });
+                            _iconList.push('dataZoom');
+                            _iconList.push('dataZoomReset');
                             break;
                         case 'saveAsImage' :
-                            if (this.canvasSupported) {
-                                iconName.push({ key: key, name: 'saveAsImage' });
+                            if (!G_vmlCanvasManager) {
+                                _iconList.push('saveAsImage');
                             }
                             break;
                         default :
-                            iconName.push({ key: key, name: key });
+                            _iconList.push(key);
                             break;
                     }
                 }
             }
-            if (iconName.length > 0) {
-                var name;
-                var key;
-                for (var i = 0, l = iconName.length; i < l; i++) {
-                    name = iconName[i].name;
-                    key = iconName[i].key;
-                    this._iconList.push(name);
-                    this._featureTitle[name] = feature[key].title[name] || feature[key].title;
-                    if (feature[key].icon) {
-                        this._featureIcon[name] = feature[key].icon[name] || feature[key].icon;
-                    }
-                    if (feature[key].color) {
-                        this._featureColor[name] = feature[key].color[name] || feature[key].color;
-                    }
-                    if (feature[key].option) {
-                        this._featureOption[name] = feature[key].option[name] 
-                                                    || feature[key].option;
-                    }
-                }
-                this._itemGroupLocation = this._getItemGroupLocation();
+            if (_iconList.length > 0) {
+                _itemGroupLocation = _getItemGroupLocation();
 
-                this._buildBackground();
-                this._buildItem();
+                _buildBackground();
+                _buildItem();
 
-                for (var i = 0, l = this.shapeList.length; i < l; i++) {
-                    this.zr.addShape(this.shapeList[i]);
+                for (var i = 0, l = self.shapeList.length; i < l; i++) {
+                    self.shapeList[i].id = zr.newShapeId(self.type);
+                    zr.addShape(self.shapeList[i]);
                 }
-                if (this._iconShapeMap['mark']) {
-                    this._iconDisable(this._iconShapeMap['markUndo']);
-                    this._iconDisable(this._iconShapeMap['markClear']);
+                if (_iconShapeMap['mark']) {
+                    _iconDisable(_iconShapeMap['markUndo']);
+                    _iconDisable(_iconShapeMap['markClear']);
                 }
-                if (this._iconShapeMap['dataZoomReset'] && this._zoomQueue.length === 0) {
-                    this._iconDisable(this._iconShapeMap['dataZoomReset']);
+                if (_iconShapeMap['dataZoomReset'] && _zoomQueue.length === 0) {
+                    _iconDisable(_iconShapeMap['dataZoomReset']);
                 }
             }
-        },
+        }
 
         /**
          * 构建所有图例元素
          */
-        _buildItem: function () {
-            var toolboxOption = this.option.toolbox;
-            var iconLength = this._iconList.length;
-            var lastX = this._itemGroupLocation.x;
-            var lastY = this._itemGroupLocation.y;
+        function _buildItem() {
+            var toolboxOption = option.toolbox;
+            var iconLength = _iconList.length;
+            var lastX = _itemGroupLocation.x;
+            var lastY = _itemGroupLocation.y;
             var itemSize = toolboxOption.itemSize;
             var itemGap = toolboxOption.itemGap;
             var itemShape;
 
             var color = toolboxOption.color instanceof Array
                         ? toolboxOption.color : [toolboxOption.color];
-            
-            var textFont = this.getFont(toolboxOption.textStyle);
+            /*
             var textPosition;
-            var textAlign;
-            var textBaseline;
-            if (toolboxOption.orient === 'horizontal') {
-                textPosition = this._itemGroupLocation.y / this.zr.getHeight() < 0.5
+            if (toolboxOption.orient == 'horizontal') {
+                textPosition = toolboxOption.y != 'bottom'
                                ? 'bottom' : 'top';
-                textAlign = this._itemGroupLocation.x / this.zr.getWidth() < 0.5
-                            ? 'left' : 'right';
-                textBaseline = this._itemGroupLocation.y / this.zr.getHeight() < 0.5
-                               ? 'top' : 'bottom';
             }
             else {
-                textPosition = this._itemGroupLocation.x / this.zr.getWidth() < 0.5
-                               ? 'right' : 'left';
+                textPosition = toolboxOption.x != 'left'
+                               ? 'left' : 'right';
             }
-            
-           this._iconShapeMap = {};
-           var self = this;
+            */
+           _iconShapeMap = {};
 
             for (var i = 0; i < iconLength; i++) {
                 // 图形
                 itemShape = {
-                    type: 'icon',
-                    zlevel: this.getZlevelBase(),
-                    z: this.getZBase(),
-                    style: {
-                        x: lastX,
-                        y: lastY,
-                        width: itemSize,
-                        height: itemSize,
-                        iconType: this._iconList[i],
-                        lineWidth: 1,
-                        strokeColor: this._featureColor[this._iconList[i]] 
-                                     || color[i % color.length],
+                    shape : 'icon',
+                    zlevel : _zlevelBase,
+                    style : {
+                        x : lastX,
+                        y : lastY,
+                        width : itemSize,
+                        height : itemSize,
+                        iconType : _iconList[i],
+                        strokeColor : color[i % color.length],
+                        shadowColor: '#ccc',
+                        shadowBlur : 2,
+                        shadowOffsetX : 2,
+                        shadowOffsetY : 2,
                         brushType: 'stroke'
                     },
-                    highlightStyle: {
-                        lineWidth: 1,
-                        text: toolboxOption.showTitle 
-                              ? this._featureTitle[this._iconList[i]]
-                              : undefined,
-                        textFont: textFont,
-                        textPosition: textPosition,
-                        strokeColor: this._featureColor[this._iconList[i]] 
-                                     || color[i % color.length]
+                    highlightStyle : {
+                        lineWidth : 2,
+                        shadowBlur: 5,
+                        strokeColor : color[i % color.length]
                     },
-                    hoverable: true,
-                    clickable: true
+                    hoverable : true,
+                    clickable : true
                 };
-                
-                if (this._featureIcon[this._iconList[i]]) {
-                    itemShape.style.image = this._featureIcon[this._iconList[i]].replace(
-                        new RegExp('^image:\\/\\/'), ''
-                    );
-                    itemShape.style.opacity = 0.8;
-                    itemShape.highlightStyle.opacity = 1;
-                    itemShape.type = 'image';
-                }
-                
-                if (toolboxOption.orient === 'horizontal') {
-                    // 修正左对齐第一个或右对齐最后一个
-                    if (i === 0 && textAlign === 'left') {
-                        itemShape.highlightStyle.textPosition = 'specific';
-                        itemShape.highlightStyle.textAlign = textAlign;
-                        itemShape.highlightStyle.textBaseline = textBaseline;
-                        itemShape.highlightStyle.textX = lastX;
-                        itemShape.highlightStyle.textY = textBaseline === 'top' 
-                                                     ? lastY + itemSize + 10
-                                                     : lastY - 10;
-                    }
-                    if (i === iconLength - 1 && textAlign === 'right') {
-                        itemShape.highlightStyle.textPosition = 'specific';
-                        itemShape.highlightStyle.textAlign = textAlign;
-                        itemShape.highlightStyle.textBaseline = textBaseline;
-                        itemShape.highlightStyle.textX = lastX + itemSize;
-                        itemShape.highlightStyle.textY = textBaseline === 'top' 
-                                                         ? lastY + itemSize + 10
-                                                         : lastY - 10;
-                    }
-                }
-                
-                switch(this._iconList[i]) {
+
+                switch(_iconList[i]) {
                     case 'mark':
-                        itemShape.onclick = self._onMark;
+                        itemShape.onclick = _onMark;
+                        _markColor = itemShape.style.strokeColor;
                         break;
                     case 'markUndo':
-                        itemShape.onclick = self._onMarkUndo;
+                        itemShape.onclick = _onMarkUndo;
                         break;
                     case 'markClear':
-                        itemShape.onclick = self._onMarkClear;
+                        itemShape.onclick = _onMarkClear;
                         break;
                     case 'dataZoom':
-                        itemShape.onclick = self._onDataZoom;
+                        itemShape.onclick = _onDataZoom;
                         break;
                     case 'dataZoomReset':
-                        itemShape.onclick = self._onDataZoomReset;
+                        itemShape.onclick = _onDataZoomReset;
                         break;
                     case 'dataView' :
-                        if (!this._dataView) {
-                            var DataView = require('./dataView');
-                            this._dataView = new DataView(
-                                this.ecTheme, this.messageCenter, this.zr, this.option, this.myChart
+                        if (!_dataView) {
+                            var componentLibrary = require('../component');
+                            var DataView = componentLibrary.get('dataView');
+                            _dataView = new DataView(
+                                messageCenter, zr, option, dom
                             );
                         }
-                        itemShape.onclick = self._onDataView;
+                        itemShape.onclick = _onDataView;
                         break;
                     case 'restore':
-                        itemShape.onclick = self._onRestore;
+                        itemShape.onclick = _onRestore;
                         break;
                     case 'saveAsImage':
-                        itemShape.onclick = self._onSaveAsImage;
+                        itemShape.onclick = _onSaveAsImage;
                         break;
                     default:
-                        if (this._iconList[i].match('Chart')) {
-                            itemShape._name = this._iconList[i].replace('Chart', '');
-                            itemShape.onclick = self._onMagicType;
-                        }
-                        else {
-                            itemShape.onclick = self._onCustomHandler;
+                        if (_iconList[i].match('Chart')) {
+                            itemShape._name = _iconList[i].replace('Chart', '');
+                            if (itemShape._name == _magicType) {
+                                itemShape.style.strokeColor = _enableColor;
+                            }
+                            itemShape.onclick = _onMagicType;
                         }
                         break;
                 }
 
-                if (itemShape.type === 'icon') {
-                    itemShape = new IconShape(itemShape);
-                }
-                else if (itemShape.type === 'image') {
-                    itemShape = new ImageShape(itemShape);
-                }
-                this.shapeList.push(itemShape);
-                this._iconShapeMap[this._iconList[i]] = itemShape;
+                self.shapeList.push(itemShape);
+                _iconShapeMap[_iconList[i]] = itemShape;
 
-                if (toolboxOption.orient === 'horizontal') {
+                if (toolboxOption.orient == 'horizontal') {
                     lastX += itemSize + itemGap;
                 }
                 else {
                     lastY += itemSize + itemGap;
                 }
             }
-        },
+        }
 
-        _buildBackground: function () {
-            var toolboxOption = this.option.toolbox;
-            var padding = this.reformCssArray(this.option.toolbox.padding);
+        function _buildBackground() {
+            var toolboxOption = option.toolbox;
+            var pTop = toolboxOption.padding[0];
+            var pRight = toolboxOption.padding[1];
+            var pBottom = toolboxOption.padding[2];
+            var pLeft = toolboxOption.padding[3];
 
-            this.shapeList.push(new RectangleShape({
-                zlevel: this.getZlevelBase(),
-                z: this.getZBase(),
+            self.shapeList.push({
+                shape : 'rectangle',
+                zlevel : _zlevelBase,
                 hoverable :false,
-                style: {
-                    x: this._itemGroupLocation.x - padding[3],
-                    y: this._itemGroupLocation.y - padding[0],
-                    width: this._itemGroupLocation.width + padding[3] + padding[1],
-                    height: this._itemGroupLocation.height + padding[0] + padding[2],
-                    brushType: toolboxOption.borderWidth === 0 ? 'fill' : 'both',
-                    color: toolboxOption.backgroundColor,
-                    strokeColor: toolboxOption.borderColor,
-                    lineWidth: toolboxOption.borderWidth
+                style : {
+                    x : _itemGroupLocation.x - pLeft,
+                    y : _itemGroupLocation.y - pTop,
+                    width : _itemGroupLocation.width + pLeft + pRight,
+                    height : _itemGroupLocation.height + pTop + pBottom,
+                    brushType : toolboxOption.borderWidth === 0
+                                ? 'fill' : 'both',
+                    color : toolboxOption.backgroundColor,
+                    strokeColor : toolboxOption.borderColor,
+                    lineWidth : toolboxOption.borderWidth
                 }
-            }));
-        },
+            });
+        }
 
         /**
          * 根据选项计算图例实体的位置坐标
          */
-        _getItemGroupLocation: function () {
-            var toolboxOption = this.option.toolbox;
-            var padding = this.reformCssArray(this.option.toolbox.padding);
-            var iconLength = this._iconList.length;
+        function _getItemGroupLocation() {
+            var toolboxOption = option.toolbox;
+            var iconLength = _iconList.length;
             var itemGap = toolboxOption.itemGap;
             var itemSize = toolboxOption.itemSize;
             var totalWidth = 0;
             var totalHeight = 0;
 
-            if (toolboxOption.orient === 'horizontal') {
+            if (toolboxOption.orient == 'horizontal') {
                 // 水平布局，计算总宽度，别忘减去最后一个的itemGap
                 totalWidth = (itemSize + itemGap) * iconLength - itemGap;
                 totalHeight = itemSize;
@@ -477,18 +256,18 @@ define(function (require) {
             }
 
             var x;
-            var zrWidth = this.zr.getWidth();
+            var zrWidth = zr.getWidth();
             switch (toolboxOption.x) {
                 case 'center' :
                     x = Math.floor((zrWidth - totalWidth) / 2);
                     break;
                 case 'left' :
-                    x = padding[3] + toolboxOption.borderWidth;
+                    x = toolboxOption.padding[3] + toolboxOption.borderWidth;
                     break;
                 case 'right' :
                     x = zrWidth
                         - totalWidth
-                        - padding[1]
+                        - toolboxOption.padding[1]
                         - toolboxOption.borderWidth;
                     break;
                 default :
@@ -498,15 +277,15 @@ define(function (require) {
             }
 
             var y;
-            var zrHeight = this.zr.getHeight();
+            var zrHeight = zr.getHeight();
             switch (toolboxOption.y) {
                 case 'top' :
-                    y = padding[0] + toolboxOption.borderWidth;
+                    y = toolboxOption.padding[0] + toolboxOption.borderWidth;
                     break;
                 case 'bottom' :
                     y = zrHeight
                         - totalHeight
-                        - padding[2]
+                        - toolboxOption.padding[2]
                         - toolboxOption.borderWidth;
                     break;
                 case 'center' :
@@ -519,252 +298,250 @@ define(function (require) {
             }
 
             return {
-                x: x,
-                y: y,
-                width: totalWidth,
-                height: totalHeight
+                x : x,
+                y : y,
+                width : totalWidth,
+                height : totalHeight
             };
-        },
+        }
 
-        __onmousemove: function (param) {
-            if (this._marking) {
-                this._markShape.style.xEnd = zrEvent.getX(param.event);
-                this._markShape.style.yEnd = zrEvent.getY(param.event);
-                this.zr.addHoverShape(this._markShape);
-            }
-            if (this._zooming) {
-                this._zoomShape.style.width = 
-                    zrEvent.getX(param.event) - this._zoomShape.style.x;
-                this._zoomShape.style.height = 
-                    zrEvent.getY(param.event) - this._zoomShape.style.y;
-                this.zr.addHoverShape(this._zoomShape);
-                this.dom.style.cursor = 'crosshair';
-                zrEvent.stop(param.event);
-            }
-            if (this._zoomStart
-                && (this.dom.style.cursor != 'pointer' && this.dom.style.cursor != 'move')
-            ) {
-                this.dom.style.cursor = 'crosshair';
-            }
-        },
-
-        __onmousedown: function (param) {
-            if (param.target) {
-                return;
-            }
-            this._zooming = true;
-            var x = zrEvent.getX(param.event);
-            var y = zrEvent.getY(param.event);
-            var zoomOption = this.option.dataZoom || {};
-            this._zoomShape = new RectangleShape({
-                zlevel: this.getZlevelBase(),
-                z: this.getZBase(),
-                style: {
-                    x: x,
-                    y: y,
-                    width: 1,
-                    height: 1,
-                    brushType: 'both'
-                },
-                highlightStyle: {
-                    lineWidth: 2,
-                    color: zoomOption.fillerColor 
-                           || ecConfig.dataZoom.fillerColor,
-                    strokeColor: zoomOption.handleColor 
-                                  || ecConfig.dataZoom.handleColor,
-                    brushType: 'both'
-                }
-            });
-            this.zr.addHoverShape(this._zoomShape);
-            return true; // 阻塞全局事件
-        },
-        
-        __onmouseup: function (/*param*/) {
-            if (!this._zoomShape 
-                || Math.abs(this._zoomShape.style.width) < 10 
-                || Math.abs(this._zoomShape.style.height) < 10
-            ) {
-                this._zooming = false;
-                return true;
-            }
-            if (this._zooming && this.component.dataZoom) {
-                this._zooming = false;
-                
-                var zoom = this.component.dataZoom.rectZoom(this._zoomShape.style);
-                if (zoom) {
-                    this._zoomQueue.push({
-                        start: zoom.start,
-                        end: zoom.end,
-                        start2: zoom.start2,
-                        end2: zoom.end2
-                    });
-                    this._iconEnable(this._iconShapeMap['dataZoomReset']);
-                    this.zr.refreshNextFrame();
-                }
-            }
-            return true; // 阻塞全局事件
-        },
-        
-        __onclick: function (param) {
-            if (param.target) {
-                return;
-            }
-            if (this._marking) {
-                this._marking = false;
-                this._markShapeList.push(this._markShape);
-                this._iconEnable(this._iconShapeMap['markUndo']);
-                this._iconEnable(this._iconShapeMap['markClear']);
-                this.zr.addShape(this._markShape);
-                this.zr.refreshNextFrame();
-            } 
-            else if (this._markStart) {
-                this._marking = true;
-                var x = zrEvent.getX(param.event);
-                var y = zrEvent.getY(param.event);
-                this._markShape = new LineShape({
-                    zlevel: this.getZlevelBase(),
-                    z: this.getZBase(),
-                    style: {
-                        xStart: x,
-                        yStart: y,
-                        xEnd: x,
-                        yEnd: y,
-                        lineWidth: this.query(
-                                       this.option,
-                                       'toolbox.feature.mark.lineStyle.width'
-                                   ),
-                        strokeColor: this.query(
-                                         this.option,
-                                         'toolbox.feature.mark.lineStyle.color'
-                                     ),
-                        lineType: this.query(
-                                      this.option,
-                                      'toolbox.feature.mark.lineStyle.type'
-                                  )
-                    }
-                });
-                this.zr.addHoverShape(this._markShape);
-            }
-        },
-        
-        __onMark: function (param) {
+        function _onMark(param) {
             var target = param.target;
-            if (this._marking || this._markStart) {
+            if (_marking || _markStart) {
                 // 取消
-                this._resetMark();
-                this.zr.refreshNextFrame();
+                _resetMark();
+                zr.refresh();
             }
             else {
                 // 启用Mark
-                this._resetZoom();   // mark与dataZoom互斥
+                _resetZoom();   // mark与dataZoom互斥
                 
-                this.zr.modShape(target.id, {style: {strokeColor: this._enableColor}});
-                this.zr.refreshNextFrame();
-                this._markStart = true;
-                var self = this;
-                setTimeout(function (){
-                    self.zr
-                    && self.zr.on(zrConfig.EVENT.CLICK, self._onclick)
-                    && self.zr.on(zrConfig.EVENT.MOUSEMOVE, self._onmousemove);
+                zr.modShape(target.id, {style: {strokeColor: _enableColor}});
+                zr.refresh();
+                _markStart = true;
+                setTimeout(function(){
+                    zr
+                    && zr.on(zrConfig.EVENT.CLICK, _onclick)
+                    && zr.on(zrConfig.EVENT.MOUSEMOVE, _onmousemove);
                 }, 10);
             }
             return true; // 阻塞全局事件
-        },
+        }
         
-        __onMarkUndo: function () {
-            if (this._marking) {
-                this._marking = false;
-            } else {
-                var len = this._markShapeList.length;
-                if (len >= 1) {
-                    var target = this._markShapeList[len - 1];
-                    this.zr.delShape(target.id);
-                    this.zr.refreshNextFrame();
-                    this._markShapeList.pop();
-                    if (len === 1) {
-                        this._iconDisable(this._iconShapeMap['markUndo']);
-                        this._iconDisable(this._iconShapeMap['markClear']);
-                    }
-                }
-            }
-            return true;
-        },
-
-        __onMarkClear: function () {
-            if (this._marking) {
-                this._marking = false;
-            }
-            var len = this._markShapeList.length;
-            if (len > 0) {
-                while(len--) {
-                    this.zr.delShape(this._markShapeList.pop().id);
-                }
-                this._iconDisable(this._iconShapeMap['markUndo']);
-                this._iconDisable(this._iconShapeMap['markClear']);
-                this.zr.refreshNextFrame();
-            }
-            return true;
-        },
-        
-        __onDataZoom: function (param) {
+        function _onDataZoom(param) {
             var target = param.target;
-            if (this._zooming || this._zoomStart) {
+            if (_zooming || _zoomStart) {
                 // 取消
-                this._resetZoom();
-                this.zr.refreshNextFrame();
-                this.dom.style.cursor = 'default';
+                _resetZoom();
+                zr.refresh();
+                dom.style.cursor = 'default';
             }
             else {
                 // 启用Zoom
-                this._resetMark();   // mark与dataZoom互斥
+                _resetMark();   // mark与dataZoom互斥
                 
-                this.zr.modShape(target.id, {style: {strokeColor: this._enableColor}});
-                this.zr.refreshNextFrame();
-                this._zoomStart = true;
-                var self = this;
-                setTimeout(function (){
-                    self.zr
-                    && self.zr.on(zrConfig.EVENT.MOUSEDOWN, self._onmousedown)
-                    && self.zr.on(zrConfig.EVENT.MOUSEUP, self._onmouseup)
-                    && self.zr.on(zrConfig.EVENT.MOUSEMOVE, self._onmousemove);
+                zr.modShape(target.id, {style: {strokeColor: _enableColor}});
+                zr.refresh();
+                _zoomStart = true;
+                setTimeout(function(){
+                    zr
+                    && zr.on(zrConfig.EVENT.MOUSEDOWN, _onmousedown)
+                    && zr.on(zrConfig.EVENT.MOUSEUP, _onmouseup)
+                    && zr.on(zrConfig.EVENT.MOUSEMOVE, _onmousemove);
                 }, 10);
                 
-                this.dom.style.cursor = 'crosshair';
+                dom.style.cursor = 'crosshair';
             }
             return true; // 阻塞全局事件
-        },
-        
-        __onDataZoomReset: function () {
-            if (this._zooming) {
-                this._zooming = false;
+        }
+
+        function _onmousemove(param) {
+            if (_marking) {
+                _markShape.style.xEnd = zrEvent.getX(param.event);
+                _markShape.style.yEnd = zrEvent.getY(param.event);
+                zr.addHoverShape(_markShape);
             }
-            this._zoomQueue.pop();
-            //console.log(this._zoomQueue)
-            if (this._zoomQueue.length > 0) {
-                this.component.dataZoom.absoluteZoom(
-                    this._zoomQueue[this._zoomQueue.length - 1]
+            if (_zooming) {
+                _zoomShape.style.width = 
+                    zrEvent.getX(param.event) - _zoomShape.style.x;
+                _zoomShape.style.height = 
+                    zrEvent.getY(param.event) - _zoomShape.style.y;
+                zr.addHoverShape(_zoomShape);
+                dom.style.cursor = 'crosshair';
+            }
+            if (_zoomStart
+                && (dom.style.cursor != 'pointer' && dom.style.cursor != 'move')
+            ) {
+                dom.style.cursor = 'crosshair';
+            }
+        }
+
+        function _onmousedown(param) {
+            if (param.target) {
+                return;
+            }
+            _zooming = true;
+            var x = zrEvent.getX(param.event);
+            var y = zrEvent.getY(param.event);
+            var zoomOption = option.dataZoom || {};
+            _zoomShape = {
+                shape : 'rectangle',
+                id : zr.newShapeId('zoom'),
+                zlevel : _zlevelBase,
+                style : {
+                    x : x,
+                    y : y,
+                    width : 1,
+                    height : 1,
+                    brushType: 'both'
+                },
+                highlightStyle : {
+                    lineWidth : 2,
+                    color: zoomOption.fillerColor 
+                           || ecConfig.dataZoom.fillerColor,
+                    strokeColor : zoomOption.handleColor 
+                                  || ecConfig.dataZoom.handleColor,
+                    brushType: 'both'
+                }
+            };
+            zr.addHoverShape(_zoomShape);
+            return true; // 阻塞全局事件
+        }
+        
+        function _onmouseup(/*param*/) {
+            if (!_zoomShape 
+                || Math.abs(_zoomShape.style.width) < 10 
+                || Math.abs(_zoomShape.style.height) < 10
+            ) {
+                _zooming = false;
+                return true;
+            }
+            if (_zooming && component.dataZoom) {
+                _zooming = false;
+                
+                var zoom = component.dataZoom.rectZoom(_zoomShape.style);
+                if (zoom) {
+                    _zoomQueue.push({
+                        start : zoom.start,
+                        end : zoom.end,
+                        start2 : zoom.start2,
+                        end2 : zoom.end2
+                    });
+                    _iconEnable(_iconShapeMap['dataZoomReset']);
+                    zr.refresh();
+                }
+            }
+            return true; // 阻塞全局事件
+        }
+        
+        function _onclick(param) {
+            if (_marking) {
+                _marking = false;
+                self.shapeList.push(_markShape);
+                _iconEnable(_iconShapeMap['markUndo']);
+                _iconEnable(_iconShapeMap['markClear']);
+                zr.addShape(_markShape);
+                zr.refresh();
+            } else if (_markStart) {
+                _marking = true;
+                var x = zrEvent.getX(param.event);
+                var y = zrEvent.getY(param.event);
+                _markShape = {
+                    shape : 'line',
+                    id : zr.newShapeId('mark'),
+                    zlevel : _zlevelBase,
+                    style : {
+                        xStart : x,
+                        yStart : y,
+                        xEnd : x,
+                        yEnd : y,
+                        lineWidth : self.deepQuery(
+                                        [option],
+                                        'toolbox.feature.mark.lineStyle.width'
+                                    ) || 2,
+                        strokeColor : self.deepQuery(
+                                          [option],
+                                          'toolbox.feature.mark.lineStyle.color'
+                                      ) || _markColor,
+                        lineType : self.deepQuery(
+                                       [option],
+                                       'toolbox.feature.mark.lineStyle.type'
+                                   ) || 'dashed'
+                    }
+                };
+                zr.addHoverShape(_markShape);
+            }
+        }
+
+        function _onMarkUndo() {
+            if (_marking) {
+                _marking = false;
+            } else {
+                var len = self.shapeList.length - 1;    // 有一个是背景shape
+                if (_iconList.length == len - 1) {
+                    _iconDisable(_iconShapeMap['markUndo']);
+                    _iconDisable(_iconShapeMap['markClear']);
+                }
+                if (_iconList.length < len) {
+                    var target = self.shapeList[self.shapeList.length - 1];
+                    zr.delShape(target.id);
+                    zr.refresh();
+                    self.shapeList.pop();
+                }
+            }
+            return true;
+        }
+
+        function _onMarkClear() {
+            if (_marking) {
+                _marking = false;
+            }
+            // 有一个是背景shape
+            var len = self.shapeList.length - _iconList.length - 1;
+            var hasClear = false;
+            while(len--) {
+                zr.delShape(self.shapeList.pop().id);
+                hasClear = true;
+            }
+            if (hasClear) {
+                _iconDisable(_iconShapeMap['markUndo']);
+                _iconDisable(_iconShapeMap['markClear']);
+                zr.refresh();
+            }
+            return true;
+        }
+        
+        function _onDataZoomReset() {
+            if (_zooming) {
+                _zooming = false;
+            }
+            _zoomQueue.pop();
+            //console.log(_zoomQueue)
+            if (_zoomQueue.length > 0) {
+                component.dataZoom.absoluteZoom(
+                    _zoomQueue[_zoomQueue.length - 1]
                 );
             }
             else {
-                this.component.dataZoom.rectZoom();
-                this._iconDisable(this._iconShapeMap['dataZoomReset']);
-                this.zr.refreshNextFrame();
+                component.dataZoom.rectZoom();
+                _iconDisable(_iconShapeMap['dataZoomReset']);
+                zr.refresh();
             }
             
             return true;
-        },
+        }
 
-        _resetMark: function () {
-            this._marking = false;
-            if (this._markStart) {
-                this._markStart = false;
-                if (this._iconShapeMap['mark']) {
+        function _resetMark() {
+            _marking = false;
+            if (_markStart) {
+                _markStart = false;
+                if (_iconShapeMap['mark']) {
                     // 还原图标为未生效状态
-                    this.zr.modShape(
-                        this._iconShapeMap['mark'].id,
+                    zr.modShape(
+                        _iconShapeMap['mark'].id,
                         {
                             style: {
-                                strokeColor: this._iconShapeMap['mark']
+                                strokeColor: _iconShapeMap['mark']
                                                  .highlightStyle
                                                  .strokeColor
                             }
@@ -772,22 +549,22 @@ define(function (require) {
                     );
                 }
                 
-                this.zr.un(zrConfig.EVENT.CLICK, this._onclick);
-                this.zr.un(zrConfig.EVENT.MOUSEMOVE, this._onmousemove);
+                zr.un(zrConfig.EVENT.CLICK, _onclick);
+                zr.un(zrConfig.EVENT.MOUSEMOVE, _onmousemove);
             }
-        },
+        }
         
-        _resetZoom: function () {
-            this._zooming = false;
-            if (this._zoomStart) {
-                this._zoomStart = false;
-                if (this._iconShapeMap['dataZoom']) {
+        function _resetZoom() {
+            _zooming = false;
+            if (_zoomStart) {
+                _zoomStart = false;
+                if (_iconShapeMap['dataZoom']) {
                     // 还原图标为未生效状态
-                    this.zr.modShape(
-                        this._iconShapeMap['dataZoom'].id,
+                    zr.modShape(
+                        _iconShapeMap['dataZoom'].id,
                         {
                             style: {
-                                strokeColor: this._iconShapeMap['dataZoom']
+                                strokeColor: _iconShapeMap['dataZoom']
                                                  .highlightStyle
                                                  .strokeColor
                             }
@@ -795,86 +572,51 @@ define(function (require) {
                     );
                 }
                 
-                this.zr.un(zrConfig.EVENT.MOUSEDOWN, this._onmousedown);
-                this.zr.un(zrConfig.EVENT.MOUSEUP, this._onmouseup);
-                this.zr.un(zrConfig.EVENT.MOUSEMOVE, this._onmousemove);
+                zr.un(zrConfig.EVENT.MOUSEDOWN, _onmousedown);
+                zr.un(zrConfig.EVENT.MOUSEUP, _onmouseup);
+                zr.un(zrConfig.EVENT.MOUSEMOVE, _onmousemove);
             }
-        },
+        }
 
-        _iconDisable: function (target) {
-            if (target.type != 'image') {
-                this.zr.modShape(target.id, {
-                    hoverable: false,
-                    clickable: false,
-                    style: {
-                        strokeColor: this._disableColor
-                    }
-                });
-            }
-            else {
-                this.zr.modShape(target.id, {
-                    hoverable: false,
-                    clickable: false,
-                    style: {
-                        opacity: 0.3
-                    }
-                });
-            }
-        },
+        function _iconDisable(target) {
+            zr.modShape(target.id, {
+                hoverable : false,
+                clickable : false,
+                style : {
+                    strokeColor : _disableColor
+                }
+            });
+        }
 
-        _iconEnable: function (target) {
-            if (target.type != 'image') {
-                this.zr.modShape(target.id, {
-                    hoverable: true,
-                    clickable: true,
-                    style: {
-                        strokeColor: target.highlightStyle.strokeColor
-                    }
-                });
-            }
-            else {
-                this.zr.modShape(target.id, {
-                    hoverable: true,
-                    clickable: true,
-                    style: {
-                        opacity: 0.8
-                    }
-                });
-            }
-        },
+        function _iconEnable(target) {
+            zr.modShape(target.id, {
+                hoverable : true,
+                clickable : true,
+                style : {
+                    strokeColor : target.highlightStyle.strokeColor
+                }
+            });
+        }
 
-        __onDataView: function () {
-            this._dataView.show(this.option);
+        function _onDataView() {
+            _dataView.show(option);
             return true;
-        },
+        }
 
-        __onRestore: function (){
-            this._resetMark();
-            this._resetZoom();
-            this.messageCenter.dispatch(ecConfig.EVENT.RESTORE, null, null, this.myChart);
+        function _onRestore(){
+            _resetMark();
+            _resetZoom();
+            messageCenter.dispatch(ecConfig.EVENT.RESTORE);
             return true;
-        },
+        }
         
-        __onSaveAsImage: function () {
-            var saveOption = this.option.toolbox.feature.saveAsImage;
+        function _onSaveAsImage() {
+            var saveOption = option.toolbox.feature.saveAsImage;
             var imgType = saveOption.type || 'png';
             if (imgType != 'png' && imgType != 'jpeg') {
                 imgType = 'png';
             }
-            
-            var image;
-            if (!this.myChart.isConnected()) {
-                image = this.zr.toDataURL(
-                    'image/' + imgType,
-                    this.option.backgroundColor 
-                    && this.option.backgroundColor.replace(' ','') === 'rgba(0,0,0,0)'
-                        ? '#fff' : this.option.backgroundColor
-                );
-            }
-            else {
-                image = this.myChart.getConnectedDataURL(imgType);
-            }
-             
+            var image = zr.toDataURL('image/' + imgType); 
             var downloadDiv = document.createElement('div');
             downloadDiv.id = '__echarts_download_wrap__';
             downloadDiv.style.cssText = 'position:fixed;'
@@ -888,6 +630,7 @@ define(function (require) {
                 + 'line-height:' 
                 + document.documentElement.clientHeight + 'px;';
                 
+            downloadDiv.onclick = _close;
             var downloadLink = document.createElement('a');
             //downloadLink.onclick = _saveImageForIE;
             downloadLink.href = image;
@@ -895,16 +638,17 @@ define(function (require) {
                 'download',
                 (saveOption.name 
                  ? saveOption.name 
-                 : (this.option.title && (this.option.title.text || this.option.title.subtext))
-                   ? (this.option.title.text || this.option.title.subtext)
+                 : (option.title && (option.title.text || option.title.subtext))
+                   ? (option.title.text || option.title.subtext)
                    : 'ECharts')
                 + '.' + imgType 
             );
-            downloadLink.innerHTML = '<img style="vertical-align:middle" src="' + image 
+            downloadLink.innerHTML = '<img src="' + image 
                 + '" title="'
-                + ((!!window.ActiveXObject || 'ActiveXObject' in window)
+                + (!!(window.attachEvent 
+                     && navigator.userAgent.indexOf('Opera') === -1)
                   ? '右键->图片另存为'
-                  : (saveOption.lang ? saveOption.lang[0] : '点击保存'))
+                  : (saveOption.lang ? saveOption.lang : '点击保存'))
                 + '"/>';
             
             downloadDiv.appendChild(downloadLink);
@@ -912,22 +656,13 @@ define(function (require) {
             downloadLink = null;
             downloadDiv = null;
             
-            setTimeout(function (){
-                var _d = document.getElementById('__echarts_download_wrap__');
-                if (_d) {
-                    _d.onclick = function () {
-                        var d = document.getElementById(
-                            '__echarts_download_wrap__'
-                        );
-                        d.onclick = null;
-                        d.innerHTML = '';
-                        document.body.removeChild(d);
-                        d = null;
-                    };
-                    _d = null;
-                }
-            }, 500);
-            
+            function _close() {
+                var d = document.getElementById('__echarts_download_wrap__');
+                d.onclick = null;
+                d.innerHTML = '';
+                document.body.removeChild(d);
+                d = null;
+            }
             /*
             function _saveImageForIE() {
                 window.win = window.open(image);
@@ -936,86 +671,38 @@ define(function (require) {
             }
             */
             return;
-        },
+        }
 
-        __onMagicType: function (param) {
-            this._resetMark();
+        function _onMagicType(param) {
+            _resetMark();
             var itemName = param.target._name;
-            if (!this._magicType[itemName]) {
+            if (itemName == _magicType) {
+                // 取消
+                _magicType = false;
+            }
+            else {
                 // 启用
-                this._magicType[itemName] = true;
-                // 折柱互斥
-                if (itemName === ecConfig.CHART_TYPE_LINE) {
-                    this._magicType[ecConfig.CHART_TYPE_BAR] = false;
-                }
-                else if (itemName === ecConfig.CHART_TYPE_BAR) {
-                    this._magicType[ecConfig.CHART_TYPE_LINE] = false;
-                }
-                // 饼图漏斗互斥
-                if (itemName === ecConfig.CHART_TYPE_PIE) {
-                    this._magicType[ecConfig.CHART_TYPE_FUNNEL] = false;
-                }
-                else if (itemName === ecConfig.CHART_TYPE_FUNNEL) {
-                    this._magicType[ecConfig.CHART_TYPE_PIE] = false;
-                }
-                // 力导和弦互斥
-                if (itemName === ecConfig.CHART_TYPE_FORCE) {
-                    this._magicType[ecConfig.CHART_TYPE_CHORD] = false;
-                }
-                else if (itemName === ecConfig.CHART_TYPE_CHORD) {
-                    this._magicType[ecConfig.CHART_TYPE_FORCE] = false;
-                }
-                // 堆积平铺互斥
-                if (itemName === _MAGICTYPE_STACK) {
-                    this._magicType[_MAGICTYPE_TILED] = false;
-                }
-                else if (itemName === _MAGICTYPE_TILED) {
-                    this._magicType[_MAGICTYPE_STACK] = false;
-                }
-                this.messageCenter.dispatch(
-                    ecConfig.EVENT.MAGIC_TYPE_CHANGED,
-                    param.event,
-                    { magicType: this._magicType },
-                    this.myChart
-                );
+                _magicType = itemName;
             }
-            
-            return true;
-        },
-        
-        setMagicType: function (magicType) {
-            this._resetMark();
-            this._magicType = magicType;
-            
-            !this._isSilence && this.messageCenter.dispatch(
+            messageCenter.dispatch(
                 ecConfig.EVENT.MAGIC_TYPE_CHANGED,
-                null,
-                { magicType: this._magicType },
-                this.myChart
+                param.event,
+                {magicType : _magicType}
             );
-        },
-        
-        // 用户自定义扩展toolbox方法
-        __onCustomHandler: function (param) {
-            var target = param.target.style.iconType;
-            var featureHandler = this.option.toolbox.feature[target].onclick;
-            if (typeof featureHandler === 'function') {
-                featureHandler.call(this, this.option);
-            }
-        },
+            return true;
+        }
 
-        // 重置备份还原状态等
-        reset: function (newOption, isRestore) {
-            isRestore && this.clear();
-            
-            if (this.query(newOption, 'toolbox.show')
-                && this.query(newOption, 'toolbox.feature.magicType.show')
+        function reset(newOption) {
+            if (newOption.toolbox
+                && newOption.toolbox.show
+                && newOption.toolbox.feature.magicType
+                && newOption.toolbox.feature.magicType.length > 0
             ) {
-                var magicType = newOption.toolbox.feature.magicType.type;
+                var magicType = newOption.toolbox.feature.magicType;
                 var len = magicType.length;
-                this._magicMap = {};     // 标识可控类型
+                _magicMap = {};     // 标识可控类型
                 while (len--) {
-                    this._magicMap[magicType[len]] = true;
+                    _magicMap[magicType[len]] = true;
                 }
 
                 len = newOption.series.length;
@@ -1023,51 +710,40 @@ define(function (require) {
                 var axis;
                 while (len--) {
                     oriType = newOption.series[len].type;
-                    if (this._magicMap[oriType]) {
+                    if (_magicMap[oriType]) {
                         axis = newOption.xAxis instanceof Array
-                               ? newOption.xAxis[newOption.series[len].xAxisIndex || 0]
+                               ? newOption.xAxis[
+                                     newOption.series[len].xAxisIndex || 0
+                                 ]
                                : newOption.xAxis;
-                        if (axis && (axis.type || 'category') === 'category') {
-                            axis.__boundaryGap = axis.boundaryGap != null
-                                                 ? axis.boundaryGap : true;
+                        if (axis && axis.type == 'category') {
+                            axis.__boundaryGap =
+                                typeof axis.boundaryGap != 'undefined'
+                                ? axis.boundaryGap : true;
                         }
                         axis = newOption.yAxis instanceof Array
-                               ? newOption.yAxis[newOption.series[len].yAxisIndex || 0]
+                               ? newOption.yAxis[
+                                     newOption.series[len].yAxisIndex || 0
+                                 ]
                                : newOption.yAxis;
-                        if (axis && axis.type === 'category') {
-                            axis.__boundaryGap = axis.boundaryGap != null
-                                                 ? axis.boundaryGap : true;
+                        if (axis && axis.type == 'category') {
+                            axis.__boundaryGap =
+                                typeof axis.boundaryGap != 'undefined'
+                                ? axis.boundaryGap : true;
                         }
                         newOption.series[len].__type = oriType;
-                        // 避免不同类型图表类型的样式污染
-                        newOption.series[len].__itemStyle = zrUtil.clone(
-                            newOption.series[len].itemStyle || {}
-                        );
-                    }
-                    
-                    if (this._magicMap[_MAGICTYPE_STACK] || this._magicMap[_MAGICTYPE_TILED]) {
-                        newOption.series[len].__stack = newOption.series[len].stack;
                     }
                 }
             }
+            _magicType = false;
             
-            this._magicType = isRestore ? {} : (this._magicType || {});
-            for (var itemName in this._magicType) {
-                if (this._magicType[itemName]) {
-                    this.option = newOption;
-                    this.getMagicOption();
-                    break;
-                }
-            }
-            
-            // 框选缩放
             var zoomOption = newOption.dataZoom;
             if (zoomOption && zoomOption.show) {
-                var start = zoomOption.start != null
+                var start = typeof zoomOption.start != 'undefined'
                             && zoomOption.start >= 0
                             && zoomOption.start <= 100
                             ? zoomOption.start : 0;
-                var end = zoomOption.end != null
+                var end = typeof zoomOption.end != 'undefined'
                           && zoomOption.end >= 0
                           && zoomOption.end <= 100
                           ? zoomOption.end : 100;
@@ -1077,167 +753,179 @@ define(function (require) {
                     end = start - end;
                     start = start - end;
                 }
-                this._zoomQueue = [{
-                    start: start,
-                    end: end,
-                    start2: 0,
-                    end2: 100
+                _zoomQueue = [{
+                    start : start,
+                    end : end,
+                    start2 : 0,
+                    end2 : 100
                 }];
             }
             else {
-                this._zoomQueue = [];
+                _zoomQueue = [];
             }
-        },
-        
-        getMagicOption: function (){
-            var axis;
-            var chartType;
-            if (this._magicType[ecConfig.CHART_TYPE_LINE] 
-                || this._magicType[ecConfig.CHART_TYPE_BAR]
-            ) {
-                // 图表类型有折柱切换
-                var boundaryGap = this._magicType[ecConfig.CHART_TYPE_LINE] ? false : true;
-                for (var i = 0, l = this.option.series.length; i < l; i++) {
-                    chartType = this.option.series[i].type;
-                    if (chartType == ecConfig.CHART_TYPE_LINE
-                        || chartType == ecConfig.CHART_TYPE_BAR
+        }
+
+        function getMagicOption(){
+            if (_magicType) {
+                // 启动
+                for (var i = 0, l = option.series.length; i < l; i++) {
+                    if (_magicMap[option.series[i].type]) {
+                        option.series[i].type = _magicType;
+                    }
+                }
+                var boundaryGap = _magicType == ecConfig.CHART_TYPE_LINE
+                                  ? false : true;
+                var len;
+                if (option.xAxis instanceof Array) {
+                    len = option.xAxis.length;
+                    while (len--) {
+                        // 横纵默认为类目
+                        if ((option.xAxis[len].type || 'category')
+                             == 'category'
+                         ) {
+                            option.xAxis[len].boundaryGap = boundaryGap;
+                        }
+                    }
+                }
+                else {
+                    if (option.xAxis
+                        && (option.xAxis.type || 'category') == 'category'
                     ) {
-                        axis = this.option.xAxis instanceof Array
-                               ? this.option.xAxis[this.option.series[i].xAxisIndex || 0]
-                               : this.option.xAxis;
-                        if (axis && (axis.type || 'category') === 'category') {
-                            axis.boundaryGap = boundaryGap ? true : axis.__boundaryGap;
-                        }
-                        axis = this.option.yAxis instanceof Array
-                               ? this.option.yAxis[this.option.series[i].yAxisIndex || 0]
-                               : this.option.yAxis;
-                        if (axis && axis.type === 'category') {
-                            axis.boundaryGap = boundaryGap ? true : axis.__boundaryGap;
-                        }
+                        option.xAxis.boundaryGap = boundaryGap;
                     }
                 }
-                
-                this._defaultMagic(ecConfig.CHART_TYPE_LINE, ecConfig.CHART_TYPE_BAR);
-            }
-            this._defaultMagic(ecConfig.CHART_TYPE_CHORD, ecConfig.CHART_TYPE_FORCE);
-            this._defaultMagic(ecConfig.CHART_TYPE_PIE, ecConfig.CHART_TYPE_FUNNEL);
-            
-            if (this._magicType[_MAGICTYPE_STACK] || this._magicType[_MAGICTYPE_TILED]) {
-                // 有堆积平铺切换
-                for (var i = 0, l = this.option.series.length; i < l; i++) {
-                    if (this._magicType[_MAGICTYPE_STACK]) {
-                        // 启用堆积
-                        this.option.series[i].stack = '_ECHARTS_STACK_KENER_2014_';
-                        chartType = _MAGICTYPE_STACK;
-                    }
-                    else if (this._magicType[_MAGICTYPE_TILED]) {
-                        // 启用平铺
-                        this.option.series[i].stack = null;
-                        chartType = _MAGICTYPE_TILED;
-                    }
-                    if (this._featureOption[chartType + 'Chart']) {
-                        zrUtil.merge(
-                            this.option.series[i],
-                            this._featureOption[chartType + 'Chart'] || {},
-                            true
-                        );
-                    }
-                }
-            }
-            return this.option;
-        },
-        
-        _defaultMagic : function(cType1, cType2) {
-            if (this._magicType[cType1] || this._magicType[cType2]) {
-                for (var i = 0, l = this.option.series.length; i < l; i++) {
-                    var chartType = this.option.series[i].type;
-                    if (chartType == cType1 || chartType == cType2) {
-                        this.option.series[i].type = this._magicType[cType1] ? cType1 : cType2;
-                        // 避免不同类型图表类型的样式污染
-                        this.option.series[i].itemStyle = zrUtil.clone(
-                            this.option.series[i].__itemStyle
-                        );
-                        chartType = this.option.series[i].type;
-                        if (this._featureOption[chartType + 'Chart']) {
-                            zrUtil.merge(
-                                this.option.series[i],
-                                this._featureOption[chartType + 'Chart'] || {},
-                                true
-                            );
-                        }
-                    }
-                }
-            }
-        },
 
-        silence: function (s) {
-            this._isSilence = s;
-        },
-        
-        resize: function () {
-            this._resetMark();
-            this.clear();
-            if (this.option && this.option.toolbox && this.option.toolbox.show) {
-               this._buildShape();
-            }
-            if (this._dataView) {
-                this._dataView.resize();
-            }
-        },
-
-        hideDataView: function () {
-            if (this._dataView) {
-                this._dataView.hide();
-            }
-        },
-        
-        clear: function(notMark) {
-            if (this.zr) {
-                this.zr.delShape(this.shapeList);
-                this.shapeList = [];
-                
-                if (!notMark) {
-                    this.zr.delShape(this._markShapeList);
-                    this._markShapeList = [];
+                if (option.yAxis instanceof Array) {
+                    len = option.yAxis.length;
+                    while (len--) {
+                        if ((option.yAxis[len].type) == 'category') {
+                            option.yAxis[len].boundaryGap = boundaryGap;
+                        }
+                    }
+                }
+                else {
+                    if (option.yAxis && option.yAxis.type == 'category') {
+                        option.yAxis.boundaryGap = boundaryGap;
+                    }
                 }
             }
-        },
-        
+            else {
+                // 还原
+                var axis;
+                for (var i = 0, l = option.series.length; i < l; i++) {
+                    if (_magicMap[option.series[i].type]) {
+                        option.series[i].type = option.series[i].__type;
+                        if (option.xAxis instanceof Array) {
+                            axis = option.xAxis[
+                                       option.series[i].xAxisIndex || 0
+                                   ];
+                            if (axis.type == 'category') {
+                                axis.boundaryGap = axis.__boundaryGap;
+                            }
+                        }
+                        else {
+                            axis = option.xAxis;
+                            if (axis && axis.type == 'category') {
+                                axis.boundaryGap = axis.__boundaryGap;
+                            }
+                        }
+
+                        if (option.yAxis instanceof Array) {
+                            axis = option.yAxis[
+                                       option.series[i].yAxisIndex || 0
+                                   ];
+                            if (axis.type == 'category') {
+                                axis.boundaryGap = axis.__boundaryGap;
+                            }
+                        }
+                        else {
+                            axis = option.yAxis;
+                            if (axis && axis.type == 'category') {
+                                axis.boundaryGap = axis.__boundaryGap;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return option;
+        }
+
+        function render(newOption, newComponent){
+            _resetMark();
+            _resetZoom();
+            newOption.toolbox = self.reformOption(newOption.toolbox);
+            // 补全padding属性
+            newOption.toolbox.padding = self.reformCssArray(
+                newOption.toolbox.padding
+            );
+            option = newOption;
+            component = newComponent;
+
+            self.shapeList = [];
+
+            if (newOption.toolbox.show) {
+                _buildShape();
+            }
+
+            hideDataView();
+        }
+
+        function resize() {
+            _resetMark();
+            self.clear();
+            if (option.toolbox.show) {
+               _buildShape();
+           }
+           if (_dataView) {
+               _dataView.resize();
+           }
+        }
+
+        function hideDataView() {
+            if (_dataView) {
+                _dataView.hide();
+            }
+        }
+
         /**
          * 释放后实例不可用
          */
-        onbeforDispose: function () {
-            if (this._dataView) {
-                this._dataView.dispose();
-                this._dataView = null;
+        function dispose() {
+            if (_dataView) {
+                _dataView.dispose();
             }
-            this._markShapeList = null;
-        },
+
+            self.clear();
+            self.shapeList = null;
+            self = null;
+        }
         
         /**
          * 刷新
          */
-        refresh: function (newOption) {
+        function refresh(newOption) {
             if (newOption) {
-                this._resetMark();
-                this._resetZoom();
-                
-                newOption.toolbox = this.reformOption(newOption.toolbox);
-                this.option = newOption;
-                
-                this.clear(true);
-    
-                if (newOption.toolbox.show) {
-                    this._buildShape();
-                }
-    
-                this.hideDataView();
+                newOption.toolbox = self.reformOption(newOption.toolbox);
+                // 补全padding属性
+                newOption.toolbox.padding = self.reformCssArray(
+                    newOption.toolbox.padding
+                );
+                option = newOption;
             }
         }
-    };
-    
-    zrUtil.inherits(Toolbox, Base);
-    
+
+        // 重载基类方法
+        self.dispose = dispose;
+
+        self.render = render;
+        self.resize = resize;
+        self.hideDataView = hideDataView;
+        self.getMagicOption = getMagicOption;
+        self.reset = reset;
+        self.refresh = refresh;
+    }
+
     require('../component').define('toolbox', Toolbox);
     
     return Toolbox;

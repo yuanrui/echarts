@@ -1,14 +1,15 @@
 require.config({
     paths:{ 
-        echarts:'example/www/js'
+        echarts:'example/www/js/echarts',
+        'echarts/chart/bar' : 'example/www/js/echarts',
+        'echarts/chart/line': 'example/www/js/echarts'
     }
 });
 require(
     [
         'echarts',
         'echarts/chart/bar',
-        'echarts/chart/line',
-        'echarts/chart/scatter'
+        'echarts/chart/line'
     ],
     function(ec) {
         myChart = ec.init(document.getElementById('main'));
@@ -23,16 +24,16 @@ require(
             toolbox: {
                 show : true,
                 feature : {
-                    mark : {show: true},
-                    magicType: {show: true, type: ['line', 'bar', 'stack', 'tiled']},
-                    restore : {show: true},
-                    saveAsImage : {show: true}
+                    mark : true,
+                    magicType:['line', 'bar'],
+                    restore : true,
+                    saveAsImage : true
                 }
             },
             xAxis : [
                 {
                     type : 'category',
-                    axisLabel:{show:false},
+                    axisLabel:{formatter:' '},
                     data : (function() {
                         var res = [];
                         for (var i = 0; i < 30; i++) {
@@ -49,8 +50,6 @@ require(
                     min:-30,
                     max:30,
                     power:1,
-                    axisLine:{show:false},
-                    axisLabel:{show:false},
                     splitArea : {show : true}
                 }
             ],
